@@ -1,0 +1,78 @@
+// ============================================================
+// AZURE HONEYPOT LAB - KQL QUERIES
+// Author: Sinekhaya | Melsoft Academy KM-03
+// Project: Azure Honeypot + Live Threat Map
+// ============================================================
+
+// ------------------------------------------------------------
+// QUERY 1: Basic Syslog Check
+// Purpose: Verify logs are flowing into Sentinel
+// ------------------------------------------------------------
+Syslog
+| take 10
+
+// ------------------------------------------------------------
+// QUERY 2: All Authentication Events
+// Purpose: View all auth activity on the honeypot
+// ------------------------------------------------------------
+Syslog
+| where Facility == "auth"
+| project TimeGenerated, HostName, SyslogMessage
+| order by TimeGenerated desc
+
+// ------------------------------------------------------------
+// QUERY 3: Failed Login Detection
+// Purpose: Identify brute force attempts by IP
+// ------------------------------------------------------------
+Syslog
+| where Facility == "auth"
+| where SyslogMessage contains "Failed password"
+| parse SyslogMessage with * "from " AttackerIP " port" *
+| where AttackerIP != ""
+| summarize FailedLogins = count() by AttackerIP
+| order by FailedLogins desc
+
+// ------------------------------------------------------------
+// QUERY 4: Hourly Attack Volume
+// Purpose: Identify peak attack times
+// ------------------------------------------------------------
+Syslog
+| where Facility == "auth"
+| where SyslogMessage contains "Failed password"
+| parse SyslogMessage with * "from " AttackerIP " port" *
+| where AttackerIP != ""
+| summarize FailedLogins = count() by HostIP, bin(TimeGenerated, 1h)
+| order by TimeGenerated desc
+
+// ------------------------------------------------------------
+// QUERY 5: Threat Map Query
+// Purpose: Geolocate attackers for world map visualisation
+// ------------------------------------------------------------
+Syslog
+| where Facility == "auth"
+| where SyslogMessage contains "Failed password"
+| parse SyslogMessage with * "from " AttackerIP " port" *
+| where AttackerIP != ""
+| summarize FailedLogins = count() by AttackerIP
+| extend GeoInfo = geo_info_from_ip_address(AttackerIP)
+| extend Latitude = toreal(GeoInfo.latitude)
+| extend Longitude = toreal(GeoInfo.longitude)
+| extend Country = tostring(GeoInfo.country)
+| extend City = tostring(GeoInfo.city)
+| project AttackerIP, FailedLogins, Latitude, Longitude, Country, City
+
+// ------------------------------------------------------------
+// QUERY 6: Top 10 Attacking Countries
+// Purpose: Summarise attacks by country
+// ------------------------------------------------------------
+Syslog
+| where Facility == "auth"
+| where SyslogMessage contains "Failed password"
+| parse SyslogMessage with * "from " AttackerIP " port" *
+| where AttackerIP != ""
+| summarize FailedLogins = count() by AttackerIP
+| extend GeoInfo = geo_info_from_ip_address(AttackerIP)
+| extend Country = tostring(GeoInfo.country)
+| summarize TotalAttacks = sum(FailedLogins) by Country
+| order by TotalAttacks desc
+| take 10
